@@ -6,4 +6,5 @@ scikit-learn
 matplotlib
 opencv-python
 pillow
+transformers  # only for --model vit_face
 kaggle  # optional: only needed to download FER2013 automatically

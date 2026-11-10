@@ -10,7 +10,6 @@ import json
 import sys
 import time
 
-import numpy as np
 import pandas as pd
 import torch
 
@@ -85,7 +84,6 @@ def main(argv=None):
 
     # ---- training loop ----
     x_val, y_val = gpu["val"]
-    steps_per_epoch = -(-len(x_train) // cfg.batch_size)
     report_every = max(1, steps_per_epoch // 10)      # ten progress updates per epoch
     for epoch in range(start_epoch, cfg.epochs):
         model.train()

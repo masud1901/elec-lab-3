@@ -25,7 +25,7 @@ During the work I found and fixed a bug: with \texttt{cudnn.benchmark} enabled t
 
 % ---------------------------------------------------------------------------
 \section{Exercise 1: Baseline (ResNet-18, 128 px)}
-The baseline is an ImageNet-pretrained ResNet-18 fine-tuned on 48$\times$48 faces enlarged to 128$\times$128. Test accuracy: TBD, test macro-F1: TBD.
+The baseline is an ImageNet-pretrained ResNet-18 fine-tuned on 48$\times$48 faces enlarged to 128$\times$128. Trained for 8 epochs, it reached a best validation accuracy of 0.847 and macro-F1 of 0.731 (epoch 7). On the test set: accuracy \textbf{0.841}, macro-F1 \textbf{0.694}.
 
 % ---------------------------------------------------------------------------
 \section{Exercise 2: Adapting the network to small images}
@@ -36,7 +36,7 @@ Instead of enlarging the faces, I kept them at 48$\times$48 and replaced the 7$\
 \toprule
 Model & Test acc. & Test macro-F1 \\
 \midrule
-Baseline, 128 px & TBD & TBD \\
+Baseline, 128 px & 0.841 & 0.694 \\
 Small stem, 48 px & TBD & TBD \\
 \bottomrule
 \end{tabular}
@@ -61,7 +61,7 @@ I also trained EfficientNet-B0 with the same recipe as a bonus arm.
 \toprule
 Model & Test acc. & Test macro-F1 \\
 \midrule
-Baseline (Exercise 1) & TBD & TBD \\
+Baseline (Exercise 1) & 0.841 & 0.694 \\
 Small stem (Exercise 2) & TBD & TBD \\
 Small stem + mixup/CutMix + EMA & TBD & TBD \\
 EfficientNet-B0 + mixup + EMA & TBD & TBD \\
@@ -96,7 +96,7 @@ I used the Vision Transformer \texttt{trpakov/vit-face-expression} (ViT-base, fi
 \toprule
 Model & Test acc. & Test macro-F1 \\
 \midrule
-Baseline ResNet-18 (ImageNet) & TBD & TBD \\
+Baseline ResNet-18 (ImageNet) & 0.841 & 0.694 \\
 4a: ResNet-18, no pretraining & TBD & TBD \\
 4b: AlexNet (ImageNet) & TBD & TBD \\
 4d: ViT, expression-pretrained & TBD & TBD \\

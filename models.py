@@ -2,6 +2,7 @@
 
 - alexnet:   the network used in the AffectNet paper
 - resnet18:  a newer, smaller and usually more accurate network (default)
+- efficientnet_b0: a small modern network, used as a bonus arm in exercise 3
 - small_cnn: a compact CNN trained from scratch, to show how much ImageNet pretraining helps
 - vit_face:  a Vision Transformer already pretrained on facial expressions (exercise 4d)
 

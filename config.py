@@ -7,7 +7,7 @@ DEFAULTS = dict(
     labels="ferplus",           # "ferplus" (8 classes, cleaner labels) or "fer2013" (original 7 classes)
     ferplus_mode="majority",    # "majority" (one label per image) or "soft" (train on the annotators' vote shares)
     # ---- model ----
-    model="resnet18",           # "resnet18", "alexnet", "small_cnn" or "vit_face" (pretrained on expressions)
+    model="resnet18",           # "resnet18", "alexnet", "efficientnet_b0", "small_cnn" or "vit_face"
     pretrained=True,            # start from ImageNet weights (ignored for small_cnn)
     img_size=128,               # FER2013 images are 48x48; pretrained networks work better on upscaled images
     small_stem=False,           # resnet18: shrink the stem so 48x48 inputs are not reduced to 2x2
@@ -39,7 +39,7 @@ HELP = dict(
           "vit_face is a ViT pretrained on facial expressions",
     pretrained="start from ImageNet weights",
     img_size="size images are upscaled to (FER2013 images are 48x48)",
-    small_stem="resnet18 with a stem for small images (stride-1 3x3 conv, no max-pool); use with --img-size 48",
+    small_stem="resnet18 with a stem for small images (stride-1 3x3 conv instead of the 7x7/stride-2 one); use with --img-size 48",
     freeze_encoder="vit_face only: freeze the pretrained encoder and train the new head",
     epochs="number of passes over the training set",
     batch_size="images per training step",
