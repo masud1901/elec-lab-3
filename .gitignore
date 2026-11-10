@@ -5,3 +5,7 @@ __pycache__/
 *.zip
 fer_project/
 report/lab-2.tex
+*.aux
+*.log
+*.out
+*.pdf

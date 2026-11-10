@@ -8,7 +8,7 @@
 \graphicspath{{figs lab 3/}}
 \captionsetup{font=small, labelfont=bf}
 
-\title{Workshop 3: Facial Expression Recognition on FER2013}
+\title{Workshop 3: Facial Expression Recognition on FER2013 (AffectNet Baseline)}
 \author{Md Akmol Masud}
 \date{November 10, 2026}
 
@@ -17,141 +17,192 @@
 
 % ---------------------------------------------------------------------------
 \section{Setup}
-All runs use FER2013 with FER+ labels (8 classes), a class-weighted loss, AdamW and the same augmentation. Because of the time limit, every arm trains for 8 epochs (16 for the longer-schedule arm) on a Colab T4. Macro-F1 is the main score; accuracy is for comparison with papers. Code and logs: \url{https://github.com/masud1901/elec-lab-3}
+All experiments use FER2013 with FER+ labels (8 classes, majority vote; 26,940 training, 3,396 validation and 3,376 test images), a class-weighted loss (inverse square root of the class size), AdamW with a one-cycle learning-rate schedule, label smoothing and the same augmentation. Because of the time limit, every arm was trained with the same reduced budget (8 epochs, 16 for the longer-schedule arm) on a Colab T4 GPU, so the comparison is fair, but the absolute numbers are lower than a full run would give. Arms at 48~px used batch size 256, the others 128. Macro-F1 is the main score; accuracy is given for comparison with published papers. The code, the Colab notebook and the logs are here: \url{https://github.com/masud1901/elec-lab-3}
 
-The classes are imbalanced (Figure~\ref{fig:counts}), so accuracy alone is misleading and macro-F1 is the right score.
+The dataset is strongly imbalanced (Figure~\ref{fig:counts}): \emph{neutral} and \emph{happy} have thousands of images, while \emph{disgust} and \emph{contempt} have only a few hundred or fewer in training. This is why accuracy alone is misleading here and why macro-F1, which weights every class equally, is the main score.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.48\linewidth]{class_counts.png}
-\caption{Training images per class.}
+\includegraphics[width=0.48\linewidth]{class_counts.png}\hfill
+\includegraphics[width=0.48\linewidth]{samples.png}
+\caption{Class distribution of the training set (left) and sample faces (right).}
 \label{fig:counts}
 \end{figure}
 
+\paragraph{A bug found on the way.} On my local GPU, training intermittently produced a NaN loss and a model that predicted only ``neutral'' (macro-F1 $\approx$ 0.06). The cause was not proven; the likely one is cuDNN autotuning (\texttt{cudnn.benchmark}) choosing a faulty fp16 kernel. I disabled the autotuner and added a guard that skips any step with a non-finite loss. A one-epoch check then gave test accuracy 0.645, and all later runs on Colab trained cleanly. A second bug, in the evaluation of the ViT model, is described in Section~\ref{sec:4d}.
+
+\paragraph{Summary of all runs.}
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{llccc}
+\begin{tabular}{llcccc}
 \toprule
-Ex. & Model & Test acc. & Test macro-F1 & Time (min) \\
+Exercise & Model & Epochs & Test acc. & Test macro-F1 & Time (min) \\
 \midrule
-1 & ResNet-18, 128 px (baseline) & \textbf{0.841} & \textbf{0.694} & 3.1 \\
-2 & ResNet-18, small stem, 48 px & 0.783 & 0.628 & 1.9 \\
-3 & small stem + mixup/CutMix + EMA, 16 ep. & 0.778 & 0.648 & 3.2 \\
-3 & EfficientNet-B0 + mixup + EMA, 128 px & 0.826 & 0.682 & 4.7 \\
-4a & ResNet-18, no pretraining, 48 px & 0.742 & 0.557 & 1.9 \\
-4b & AlexNet, 128 px & 0.785 & 0.613 & 3.9 \\
-4d & ViT pretrained on expressions (validation only) & 0.697 & 0.501 & --- \\
+1 & ResNet-18, 128 px (baseline) & 8 & \textbf{0.841} & \textbf{0.694} & 3.1 \\
+2 & ResNet-18, small stem, 48 px & 8 & 0.783 & 0.628 & 1.9 \\
+3 & small stem + mixup/CutMix + EMA & 16 & 0.778 & 0.648 & 3.2 \\
+3 (bonus) & EfficientNet-B0 + mixup + EMA, 128 px & 8 & 0.826 & 0.682 & 4.7 \\
+4a & ResNet-18, no pretraining, 48 px & 8 & 0.742 & 0.557 & 1.9 \\
+4b & AlexNet, 128 px & 8 & 0.785 & 0.613 & 3.9 \\
+4d & ViT pretrained on expressions, frozen & 8 & \multicolumn{2}{c}{validation only: 0.697 / 0.501} & --- \\
 \bottomrule
 \end{tabular}
-\caption{All experiments. Test numbers use the checkpoint with the best validation macro-F1.}
+\caption{All experiments. Test numbers come from the checkpoint with the best validation macro-F1.}
 \label{tab:all}
 \end{table}
 
 % ---------------------------------------------------------------------------
-\section{Exercise 1: Baseline}
-The baseline is an ImageNet-pretrained ResNet-18 on faces enlarged to 128 px. It reaches test accuracy \textbf{0.841} and macro-F1 \textbf{0.694}, the best of all runs. Large classes score well (happy 0.93, surprise 0.88, neutral 0.86); rare classes score poorly (disgust 0.44, contempt 0.36, fear 0.56; Table~\ref{tab:perclass}). The main confusions are sad $\to$ neutral, disgust $\to$ angry, fear $\to$ surprise and contempt $\to$ neutral (Figure~\ref{fig:cm}).
+\section{Exercise 1: Baseline (ResNet-18, 128 px)}
+The baseline is an ImageNet-pretrained ResNet-18 fine-tuned on 48$\times$48 faces enlarged to 128$\times$128. Its best validation score was accuracy 0.847 and macro-F1 0.731 (epoch 7). On the test set it reaches accuracy \textbf{0.841} and macro-F1 \textbf{0.694}. It was the best model of all my runs, and I use it for Exercise~5.
+
+Per class (Table~\ref{tab:perclass}), the large classes are recognised well (happy 0.93, surprise 0.88, neutral 0.86), while the rare ones are weak: disgust 0.44, contempt 0.36 and fear 0.56. The confusion matrices (Figure~\ref{fig:cm}) show where the mistakes come from: \emph{sad} is often taken for \emph{neutral}, \emph{disgust} for \emph{angry}, \emph{fear} for \emph{surprise}, and \emph{contempt} for \emph{neutral}. These are expressions that are visually close, and in FER2013 even humans disagree on them.
 
 \begin{table}[h]
 \centering
 \small
 \begin{tabular}{lcccccccc}
 \toprule
-Model & neu. & hap. & sur. & sad & ang. & dis. & fear & con. \\
+Model & neutral & happy & surprise & sad & angry & disgust & fear & contempt \\
 \midrule
-Baseline (Ex.~1) & 0.858 & 0.934 & 0.876 & 0.707 & 0.808 & 0.444 & 0.564 & 0.357 \\
-Small stem (Ex.~2) & 0.806 & 0.899 & 0.825 & 0.602 & 0.734 & 0.364 & 0.505 & 0.290 \\
+ResNet-18, 128 px (Ex.~1) & 0.858 & 0.934 & 0.876 & 0.707 & 0.808 & 0.444 & 0.564 & 0.357 \\
+Small stem, 48 px (Ex.~2) & 0.806 & 0.899 & 0.825 & 0.602 & 0.734 & 0.364 & 0.505 & 0.290 \\
 Mixup/CutMix/EMA (Ex.~3) & 0.804 & 0.881 & 0.779 & 0.505 & 0.753 & 0.556 & 0.478 & 0.432 \\
 EfficientNet-B0 (Ex.~3) & 0.848 & 0.914 & 0.844 & 0.672 & 0.800 & 0.400 & 0.538 & 0.439 \\
-No pretraining (4a) & 0.776 & 0.861 & 0.811 & 0.531 & 0.679 & 0.286 & 0.383 & 0.125 \\
-AlexNet (4b) & 0.809 & 0.899 & 0.830 & 0.597 & 0.738 & 0.318 & 0.462 & 0.245 \\
+No pretraining (Ex.~4a) & 0.776 & 0.861 & 0.811 & 0.531 & 0.679 & 0.286 & 0.383 & 0.125 \\
+AlexNet (Ex.~4b) & 0.809 & 0.899 & 0.830 & 0.597 & 0.738 & 0.318 & 0.462 & 0.245 \\
 \bottomrule
 \end{tabular}
-\caption{Per-class test F1.}
+\caption{Per-class F1 on the test set.}
 \label{tab:perclass}
 \end{table}
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\linewidth]{confusion_matrices_all.png}
-\caption{Confusion matrices on the test set (rows: true class, columns: predicted).}
+\caption{Normalised confusion matrices on the test set for every trained arm (rows: true class, columns: predicted class).}
 \label{fig:cm}
 \end{figure}
 
 % ---------------------------------------------------------------------------
-\section{Exercise 2: Small images}
-I keep the faces at 48 px and replace ResNet-18's 7$\times$7 stride-2 stem with a 3$\times$3 stride-1 convolution. The standard stem would shrink a 48 px face to 2$\times$2 in the last stage; the small stem keeps 24$\times$24 after the max-pool.
+\section{Exercise 2: Adapting the network to small images}
+Instead of enlarging the faces, I kept them at 48$\times$48 and replaced the 7$\times$7 stride-2 stem convolution of ResNet-18 with a 3$\times$3 stride-1 convolution. With the standard stem a 48~px image shrinks to 6$\times$6 after the max-pool and the later stages reduce it to 2$\times$2, so most of the spatial detail is lost; with the small stem the max-pool gives 24$\times$24. The network also processes about 7 times fewer pixels than at 128~px.
 
-The small stem is worse than enlarging: accuracy 0.783 vs.\ 0.841 and macro-F1 0.628 vs.\ 0.694. It is faster (9~s vs.\ 15~s per epoch). The pretrained filters expect object scales of about 224 px, and the new first layer starts from scratch. The model was still improving at epoch 8, so a longer schedule would narrow the gap.
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Model & Test acc. & Test macro-F1 & Time \\
+\midrule
+Baseline, 128 px & 0.841 & 0.694 & 3.1 min \\
+Small stem, 48 px & 0.783 & 0.628 & 1.9 min \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In my runs the small-stem network is \emph{worse} than enlarging the faces: $-5.8$ points of accuracy and $-6.6$ points of macro-F1 (and lower on every class, Table~\ref{tab:perclass}). It is cheaper, though: an epoch took 9~s instead of 15~s. A likely reason is that the pretrained filters were learned on objects at about 224~px, so an enlarged face brings its features closer to the scale the filters expect, while the changed first layer must be learned from scratch. With only 8 epochs the small-stem model was also still improving (validation macro-F1 0.668 at epoch 7), so the gap may shrink with a longer schedule. I did not test this.
 
 % ---------------------------------------------------------------------------
-\section{Exercise 3: Improving the model}
-Published single-network results on the original FER2013 labels are about 73\% accuracy (e.g.\ Khaireddin and Chen, 2021). % verify before submitting
-They use the noisier original labels, so they do not compare directly with FER+.
+\section{Exercise 3: Improving accuracy}
+For reference, single-network results on the original FER2013 labels are in the low-to-mid 70\% range, e.g.\ about 73\% accuracy for a carefully tuned VGG network (Khaireddin and Chen, 2021), with ensembles slightly higher. % verify the exact figures before submitting
+These numbers use the original, noisier labels, so they cannot be compared directly with my FER+ results.
 
-My method combines three ideas: mixup (0.2) and CutMix (1.0), EMA of the weights (0.999), and a longer schedule (16 epochs) with learning rate $10^{-3}$. Mixup and CutMix blend images and labels so the network cannot memorise single faces. EMA evaluates a smoothed copy of the weights.
+My method combines three ideas, all added to the training loop:
+\begin{itemize}
+\item \textbf{Mixup (alpha 0.2) and CutMix (alpha 1.0):} half of the batches are blended or have a patch pasted from another image, with the labels mixed in the same proportion. The network cannot memorise single images, which reduces overfitting on a small dataset.
+\item \textbf{EMA of the weights (decay 0.999):} a slowly updated copy of the weights is used for validation and testing. It is smoother and usually generalises better than the final step.
+\item \textbf{Longer schedule with a tuned learning rate:} 16 epochs at peak learning rate $10^{-3}$ instead of 8 at $5\cdot10^{-4}$.
+\end{itemize}
+As a bonus arm I trained EfficientNet-B0 at 128~px with mixup and EMA (8 epochs).
 
 \begin{center}
 \begin{tabular}{lcc}
 \toprule
 Model & Test acc. & Test macro-F1 \\
 \midrule
-Baseline, 128 px (Ex.~1) & 0.841 & 0.694 \\
-Small stem, 48 px (Ex.~2) & 0.783 & 0.628 \\
-Small stem + mixup/CutMix + EMA & 0.778 & 0.648 \\
+Baseline, 128 px (Exercise 1) & 0.841 & 0.694 \\
+Small stem, 48 px (Exercise 2) & 0.783 & 0.628 \\
+Small stem + mixup/CutMix + EMA, 16 epochs & 0.778 & 0.648 \\
 EfficientNet-B0 + mixup + EMA, 128 px & 0.826 & 0.682 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Against its own 48 px baseline, the method gains $+2.0$ points of macro-F1 and loses 0.5 points of accuracy. It does not beat the 128 px baseline. The gain comes from the rare classes (disgust 0.364 $\to$ 0.556, contempt 0.290 $\to$ 0.432) while sad and surprise get worse.
+\paragraph{Result.} Compared with its own starting point (Exercise 2: same network and resolution), the combined method improves macro-F1 by $+2.0$ points (0.628 $\to$ 0.648), which reaches the 1--2 point target on the main score, but accuracy does not improve ($-0.5$ points). It also does not beat the 128~px baseline (0.841 / 0.694), and I do not claim that it does.
 
-The method is under-trained, not over-regularised. With EMA 0.999 and 106 steps per epoch the averaged weights lag: validation accuracy is 0.26 after epoch 1, and the model is still improving at epoch 16 (Figure~\ref{fig:curves}). The exercise asks for 50--100 epochs; I trained 16. I did not run an ablation, so I do not know which component helped most.
+The per-class scores (Table~\ref{tab:perclass}) show what changed. Mixup/CutMix helps the rare classes: disgust improves from 0.364 to 0.556 and contempt from 0.290 to 0.432. But \emph{sad} drops from 0.602 to 0.505 and \emph{surprise} from 0.825 to 0.779, and the confusion matrix shows that this model predicts \emph{neutral} too often. So the gain in macro-F1 comes from the rare classes, at the expense of some of the common ones.
+
+\paragraph{Why not more.} The learning curves (Figure~\ref{fig:curves}) show the cause. With an EMA decay of 0.999 and only 106 steps per epoch, the averaged weights lag far behind the trained ones: validation accuracy was only 0.26 after epoch~1, and the model was still improving at epoch~16 (its best epoch was the last one). Mixup and CutMix also slow convergence. Both techniques are meant for the 50--100 epoch regime of the exercise, while my budget was about a sixth of the lower end; the model is clearly under-trained rather than over-regularised. EfficientNet-B0 behaves the same way (it was also best at its last epoch) and ended slightly below the ResNet-18 baseline. I did not run an ablation, so I cannot say which of the three components helped most.
 
 % ---------------------------------------------------------------------------
-\section{Exercise 4: Pretraining}
+\section{Exercise 4: Effect of pretraining}
 
-\paragraph{4a: No pretraining.} Accuracy 0.742, macro-F1 0.557. Against the same setup with ImageNet weights (Exercise 2), pretraining adds $+4.1$ points of accuracy and $+7.1$ of macro-F1. The gain is largest on rare classes (contempt 0.125 vs.\ 0.290).
+\subsection*{4a: No pretrained weights}
+ResNet-18 with random initialisation (48~px, small stem): accuracy \textbf{0.742}, macro-F1 \textbf{0.557}. This is the same setup as Exercise~2 (0.783 / 0.628) without ImageNet weights, so pretraining is worth $+4.1$ points of accuracy and $+7.1$ points of macro-F1. The difference is largest for the rare classes (contempt 0.125 vs.\ 0.290, fear 0.383 vs.\ 0.505): with few examples, a network that starts from scratch has little chance to learn them, while pretrained features already describe edges and shapes. ImageNet contains no faces labelled with expressions, but low-level features still transfer.
 
-\paragraph{4b: AlexNet.} Accuracy 0.785, macro-F1 0.613, against 0.841 / 0.694 for ResNet-18 at the same size.
+\subsection*{4b: AlexNet}
+AlexNet (the network of the AffectNet paper) at 128~px: accuracy \textbf{0.785}, macro-F1 \textbf{0.613}, compared with 0.841 / 0.694 for ResNet-18 at the same resolution.
 
-\paragraph{4c: AlexNet vs.\ ResNet-18.}
+\subsection*{4c: AlexNet vs.\ ResNet-18 during training}
+
 \begin{figure}[h]
 \centering
 \includegraphics[width=\linewidth]{learning_curves_all.png}
-\caption{Train loss, validation loss, validation accuracy and validation macro-F1 per epoch. ResNet-18: green. AlexNet: blue. No pretraining: brown. ViT: pink. Mixup/CutMix/EMA: red.}
+\caption{Train loss, validation loss, validation accuracy and validation macro-F1 per epoch for every arm. ResNet-18 at 128 px is green, AlexNet blue, no pretraining brown, ViT pink, mixup/CutMix/EMA red.}
 \label{fig:curves}
 \end{figure}
-ResNet-18 is better at every epoch. After 8 epochs it has train loss 1.23 vs.\ 1.48, validation loss 1.26 vs.\ 1.42, validation accuracy 0.848 vs.\ 0.791 and validation macro-F1 0.728 vs.\ 0.633. AlexNet is also noisier. Neither network overfits in 8 epochs; the gap is optimisation speed. ResNet-18 has batch normalisation, residual connections and 11M parameters. AlexNet has no normalisation and 57M parameters, mostly in dense layers. I did not tune AlexNet's learning rate separately.
 
-\paragraph{4d: Expression-pretrained network.} I use the ViT \texttt{trpakov/vit-face-expression}, pretrained on facial expressions, with a frozen encoder and a new head, at 112 px. Its test evaluation crashed on a bug in my code (fixed afterwards), so I report validation numbers: accuracy 0.697 and macro-F1 0.501. These are far below ResNet-18 (0.848 / 0.728) and not comparable to the test rows. The train loss stays at 1.86, so the model under-fits. The likely cause is the frozen encoder: only a small head adapts to the 8 FER+ classes. The checkpoint was also trained on FER2013, so it may have seen my test faces. Fine-tuning the encoder would be the next step.
+ResNet-18 is better at every stage. After 8 epochs its train loss is 1.23 against 1.48 for AlexNet, its validation loss 1.26 against 1.42, its validation accuracy 0.848 against 0.791 and its validation macro-F1 0.728 against 0.633. The AlexNet curves are also noisier (its validation macro-F1 dropped from 0.630 to 0.607 at epoch 7), while ResNet-18 improved almost every epoch. Neither network overfits within 8 epochs, because the train loss is still above the validation loss for both (the training loss includes augmentation and label smoothing); the difference is how fast they optimise. ResNet-18 has batch normalisation and residual connections, which make optimisation easier and more stable, a global average pool instead of large fully connected layers, and 11M instead of 57M parameters. AlexNet has no normalisation and most of its parameters are in dense layers, which learn slowly from 27k small images. I did not tune the learning rate separately for AlexNet, so part of the gap may come from that.
+
+\subsection*{4d: A network pretrained on expressions}\label{sec:4d}
+I used the Vision Transformer \texttt{trpakov/vit-face-expression} (ViT-base, fine-tuned on FER2013 expressions). Its encoder already encodes faces and expressions, unlike ImageNet features, so I froze it and trained only a new head, at 112~px with interpolated position embeddings to fit the time budget. A caveat: this checkpoint was trained on FER2013 images, so it may have seen faces that are in my test set.
+
+\textbf{Result.} The model trained for 8 epochs, but its automatic test evaluation crashed because of a bug in how \texttt{evaluate.py} rebuilt the ViT (a pooling layer that the saved weights do not contain). I fixed the bug afterwards; the numbers I have for this model are therefore \emph{validation} numbers: accuracy 0.697 and macro-F1 0.501 at the last epoch (best epoch 7: 0.701 / 0.516). They are not comparable to the test numbers of the other rows. Even so, they are clearly below ResNet-18 (validation 0.848 / 0.728), and the curve (Figure~\ref{fig:curves}) is flat: the train loss stays high at 1.86, which means the model is under-fitting, not over-fitting.
+
+\textbf{Interpretation.} My hypothesis that an expression-pretrained network would help was not confirmed in this setup. Likely reasons: (i)~the encoder was frozen, so only a small head could adapt to the 8 FER+ classes, whereas ResNet-18 was fine-tuned completely; (ii)~the 7-class head of the original model was removed, and features optimised for the old class set and for 224~px inputs do not necessarily separate the rare classes \emph{disgust}, \emph{fear} and \emph{contempt}, which are what limits macro-F1; (iii)~I fed 112~px images with interpolated position embeddings instead of the 224~px it was trained on. I did not test these explanations; fine-tuning the encoder with a small learning rate would be the first thing to try.
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Model & Acc. & Macro-F1 \\
+\midrule
+Baseline ResNet-18 (ImageNet) & 0.841 & 0.694 \\
+4a: ResNet-18, no pretraining (48 px) & 0.742 & 0.557 \\
+4b: AlexNet (ImageNet), 128 px & 0.785 & 0.613 \\
+4d: ViT, expression-pretrained (validation only) & 0.697 & 0.501 \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 % ---------------------------------------------------------------------------
-\section{Exercise 5: Own photos}
-I use the best model (ResNet-18, 128 px). The smiling photo is classified as \emph{happy} with 74\% confidence.
+\section{Exercise 5: Predictions on my own photos}
+I used the best model (ResNet-18, 128 px) with \texttt{predict.py}. The script finds the face with a face detector, converts it to the 48$\times$48 grayscale input the model was trained on, and shows the probability of each class.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\linewidth]{predictions_ayon.png}
-\caption{Prediction for my photo: face found, \emph{happy} 74\%.}
+\caption{A smiling photo of me: the model predicts \emph{happy} with 74\% confidence.}
 \end{figure}
 
-As a sanity check I use a cat picture. No face is found, yet the model answers \emph{sad} at only 25\%, with the probability spread across classes. The model always picks an expression; low confidence is the only warning.
+The model recognises the smiling photo correctly and with a clear margin; the remaining probability mass goes to \emph{contempt} (9\%) and \emph{disgust} (7\%), classes that often share a raised cheek or a slight asymmetric smile.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\linewidth]{predictions_catto.png}
-\caption{Prediction for a cat picture: no face found, \emph{sad} 25\%.}
+\caption{A cat's face: no human face was found, and the whole image was used.}
 \end{figure}
 
+As a sanity check I also gave it a picture of a cat. The face detector found no face and the script used the whole image. The model still produces an answer (\emph{sad}, only 25\%), and its probabilities are spread over many classes. This shows that the model always picks an expression, even on inputs it was never trained for, and that low confidence is the only warning sign.
+
+\paragraph{Limitation.} I only have one human photo with one mood here. A proper test needs several photos with different expressions (neutral, sad, angry, surprised) and a comparison with the class-wise scores above: based on Table~\ref{tab:perclass} I would expect \emph{happy} and \emph{surprise} to be reliable and \emph{sad}, \emph{fear} and \emph{disgust} to be often confused with \emph{neutral}, \emph{surprise} and \emph{angry}.
+
+% ---------------------------------------------------------------------------
 \section{Conclusions}
 \begin{itemize}
-\item Pretraining matters most: without it, macro-F1 drops by 7 points.
-\item ResNet-18 beats AlexNet by 5.6 points of accuracy.
-\item Enlarging 48 px faces beats the small stem, which is faster.
-\item Mixup/CutMix/EMA helps rare classes but needs much longer training than I had.
-\item A frozen expression-pretrained ViT does not beat ResNet-18.
-\item Every result is one run with one seed; differences of one or two points are within noise.
+\item Pretraining matters most: removing it costs 4--7 points, and the choice of the pretrained network matters nearly as much (ResNet-18 beat AlexNet by 5.6 points of accuracy).
+\item Upscaling the 48~px faces beat the small-stem adaptation in my short runs, even though the latter is cheaper.
+\item Mixup/CutMix/EMA improved macro-F1 over its own baseline by 2 points by helping the rare classes, but it needs much longer training than my budget; it did not beat the plain 128~px baseline.
+\item The expression-pretrained ViT with a frozen encoder was not better than ImageNet-pretrained ResNet-18.
+\item All experiments are single runs with one seed, so differences of one or two points are within the likely run-to-run noise.
 \end{itemize}
 
 \end{document}
