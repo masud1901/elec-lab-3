@@ -64,7 +64,7 @@ class ViTExpression(nn.Module):
         if pretrained:
             self.encoder = ViTModel.from_pretrained(checkpoint, add_pooling_layer=False)
         else:
-            self.encoder = ViTModel(ViTConfig(add_pooling_layer=False))
+            self.encoder = ViTModel(ViTConfig(), add_pooling_layer=False)   # same layers as the pretrained one
         if freeze_encoder:
             for p in self.encoder.parameters():
                 p.requires_grad = False
