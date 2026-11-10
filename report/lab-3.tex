@@ -19,7 +19,7 @@
 
 % ---------------------------------------------------------------------------
 \section{Setup}
-All experiments use FER2013 with FER+ labels (8 classes, majority vote), a class-weighted loss (inverse square root of class size), AdamW with a one-cycle learning rate schedule, and the same augmentation. Because of the time limit, every arm was trained with the same reduced budget (8 epochs, 16 for the longer-schedule arm) on a Colab T4 GPU, so the comparison is fair but the absolute numbers are lower than a full run would give. Macro-F1 is the main score; accuracy is given for comparison with published papers. The code can be found here: \url{https://github.com/masud1901/elec-lab-3}
+All experiments use FER2013 with FER+ labels (8 classes, majority vote), a class-weighted loss (inverse square root of class size), AdamW with a one-cycle learning rate schedule, and the same augmentation. Arms at 48 px used batch size 256, the others 128. Because of the time limit, every arm was trained with the same reduced budget (8 epochs, 16 for the longer-schedule arm) on a Colab T4 GPU, so the comparison is fair but the absolute numbers are lower than a full run would give. Macro-F1 is the main score; accuracy is given for comparison with published papers. The code can be found here: \url{https://github.com/masud1901/elec-lab-3}
 
 During the work I found and fixed a bug: with \texttt{cudnn.benchmark} enabled together with fp16 autocast, training on my local GPU intermittently produced a NaN loss and a model that predicted only ``neutral'' (macro-F1 $\approx$ 0.06). I disabled the autotuner and added a guard that skips any step with a non-finite loss; a one-epoch check afterwards gave test accuracy 0.645 and macro-F1 0.41.
 
@@ -37,12 +37,12 @@ Instead of enlarging the faces, I kept them at 48$\times$48 and replaced the 7$\
 Model & Test acc. & Test macro-F1 \\
 \midrule
 Baseline, 128 px & 0.841 & 0.694 \\
-Small stem, 48 px & TBD & TBD \\
+Small stem, 48 px & 0.783 & 0.628 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Discussion: TBD (is the small-image network better or worse than upscaling, and what does the time/accuracy trade-off look like?).
+Discussion: in my runs the small-stem network at 48 px is \emph{worse} than enlarging the faces: $-5.8$ points of accuracy and $-6.6$ points of macro-F1. It is cheaper, though: an epoch took 9~s instead of 15~s and the whole run 1.9~min instead of 3.1~min. A likely reason is that the pretrained filters were learned on objects at around 224 px, so enlarging the face brings its features closer to the scale the filters expect, while the small stem changes the first layer, which is therefore trained from scratch. With only 8 epochs the small-stem model was also still improving (validation macro-F1 0.668 at epoch 7), so the gap may shrink with a longer schedule.
 
 % ---------------------------------------------------------------------------
 \section{Exercise 3: Improving accuracy}
@@ -62,23 +62,23 @@ I also trained EfficientNet-B0 with the same recipe as a bonus arm.
 Model & Test acc. & Test macro-F1 \\
 \midrule
 Baseline (Exercise 1) & 0.841 & 0.694 \\
-Small stem (Exercise 2) & TBD & TBD \\
-Small stem + mixup/CutMix + EMA & TBD & TBD \\
-EfficientNet-B0 + mixup + EMA & TBD & TBD \\
+Small stem (Exercise 2) & 0.783 & 0.628 \\
+Small stem + mixup/CutMix + EMA (16 ep.) & 0.778 & 0.648 \\
+EfficientNet-B0 + mixup + EMA, 128 px & 0.826 & 0.682 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Discussion: TBD (was the improvement of 1--2 points reached? Which component probably helped most? Note the budget is much shorter than the 50--100 epochs suggested.)
+Discussion: compared with its own starting point (Exercise 2, same network and resolution) the combined method improves macro-F1 by $+2.0$ points (0.628 $\to$ 0.648), which reaches the 1--2 point target on the main score, but accuracy does not improve ($-0.5$ points), and it does not beat the 128 px baseline (0.841 / 0.694). I do not claim a better result than the baseline. The reason is visible in the logs: with an EMA decay of 0.999 and only 106 steps per epoch, the averaged weights lag far behind, so validation accuracy was only 0.26 after the first epoch, and the model was still improving at epoch 16 (the best epoch was the last one). Mixup and CutMix also make training slower to converge. Both techniques are meant for the 50--100 epoch regime of the exercise, and my budget was about a sixth of the lower end. The gain in macro-F1 is consistent with mixup and CutMix helping the rare classes, but I did not run an ablation, so I cannot say which of the three components caused it. EfficientNet-B0 (0.826 / 0.682) was also best at its last epoch and slightly below the ResNet-18 baseline on the test set.
 
 % ---------------------------------------------------------------------------
 \section{Exercise 4: Effect of pretraining}
 
 \subsection*{4a: No pretrained weights}
-ResNet-18 with random initialisation (48 px, small stem): accuracy TBD, macro-F1 TBD.
+ResNet-18 with random initialisation (48 px, small stem): accuracy \textbf{0.742}, macro-F1 \textbf{0.557}. This is the same setup as Exercise 2 (0.783 / 0.628) without ImageNet weights, so pretraining is worth $+4.1$ points of accuracy and $+7.1$ points of macro-F1 here.
 
 \subsection*{4b: AlexNet}
-AlexNet (the network of the AffectNet paper) at 128 px: accuracy TBD, macro-F1 TBD.
+AlexNet (the network of the AffectNet paper) at 128 px: accuracy \textbf{0.785}, macro-F1 \textbf{0.613}, compared with 0.841 / 0.694 for ResNet-18 at the same resolution.
 
 \subsection*{4c: AlexNet vs.\ ResNet-18 during training}
 
@@ -86,7 +86,7 @@ AlexNet (the network of the AffectNet paper) at 128 px: accuracy TBD, macro-F1 T
 \includegraphics[width=0.9\linewidth]{"figs lab 3/learning_curves_all.png"}
 \end{center}
 
-Discussion: TBD from the curves (train loss, val loss, val accuracy and val macro-F1). Points to check: does AlexNet train slower or overfit earlier, is its val loss higher, and does the batch-normalised, residual ResNet-18 converge faster and to a higher F1? AlexNet has about 57M parameters, mostly in its fully connected layers, which makes it easier to overfit.
+Discussion: ResNet-18 is better at every stage. After 8 epochs its train loss is 1.23 against 1.48 for AlexNet, its validation loss 1.26 against 1.42, its validation accuracy 0.848 against 0.791 and its validation macro-F1 0.728 against 0.633. The AlexNet curves are also noisier (its validation macro-F1 dropped from 0.630 to 0.607 at epoch 7), while ResNet-18 improved almost every epoch. Neither network overfits within 8 epochs, because train loss is still above validation loss for both (the training loss includes augmentation and label smoothing); the difference is how fast they optimise. ResNet-18 has batch normalisation and residual connections, which make optimisation easier and more stable, a global average pool instead of large fully connected layers, and 11M instead of 57M parameters. AlexNet has no normalisation and most of its parameters are in dense layers, which learn slowly from 27k small images. I did not tune the learning rate separately for AlexNet, so part of the gap may come from that.
 
 \subsection*{4d: A network pretrained on expressions}
 I used the Vision Transformer \texttt{trpakov/vit-face-expression} (ViT-base, fine-tuned on facial expressions). Its encoder already encodes faces and expressions, unlike ImageNet features, so only a new head is trained (encoder frozen), at 112 px with interpolated position embeddings to fit the time budget. \textbf{TBD: note that this checkpoint was trained on FER2013 images, so it may have seen our test faces; I mention this as a caveat.}
@@ -97,8 +97,8 @@ I used the Vision Transformer \texttt{trpakov/vit-face-expression} (ViT-base, fi
 Model & Test acc. & Test macro-F1 \\
 \midrule
 Baseline ResNet-18 (ImageNet) & 0.841 & 0.694 \\
-4a: ResNet-18, no pretraining & TBD & TBD \\
-4b: AlexNet (ImageNet) & TBD & TBD \\
+4a: ResNet-18, no pretraining (48 px) & 0.742 & 0.557 \\
+4b: AlexNet (ImageNet), 128 px & 0.785 & 0.613 \\
 4d: ViT, expression-pretrained & TBD & TBD \\
 \bottomrule
 \end{tabular}
