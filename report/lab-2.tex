@@ -1,0 +1,54 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{url}
+\captionsetup{font=small, labelfont=bf}
+
+\title{Workshop 2: DeepConvLSTM}
+\author{Md Akmol Masud}
+\date{October 6, 2026}
+
+\begin{document}
+\maketitle
+
+% ---------------------------------------------------------------------------
+\section{Part 0: Reproduce the reference model (10\%)}
+I was able to reproduce the reference model results. But to get results faster, I used only 10 epochs. I noticed it is enough to make a judgment based on the results. The code can be found here: \url{https://github.com/masud1901/elec-lab-2}
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 2/part0.png"}
+\end{center}
+
+
+% ---------------------------------------------------------------------------
+\section{Part A - Is the LSTM what helps?}
+
+From the results, I can see that LSTM definitely helps. The peak epoch is much higher than that of the GRU and CNN-only models. The reason is that LSTM models temporal dependencies better than GRU, and CNNs lack a mechanism to handle them. GRU also has it, but it sacrifices accuracy points for simplicity. LSTM has two gates that help it both forget and retain useful information from its states. which makes the difference.
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 2/part1.png"}
+\end{center}
+
+
+% ---------------------------------------------------------------------------
+\section{Part B - Do the convolutions matter?}
+
+I think convolution is best for extracting features. In this case, we can see that a simpler CNN finds it harder to extract features, but conversely, an over-complex model, like the two-layer CNN, performs worse than the CNN with 1 layer. So it makes the point that overcomplexity also hurts the model's evaluation.
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 2/part2.png"}
+\end{center}
+
+% ---------------------------------------------------------------------------
+\section{Part C - How long should the window be?}
+
+ In the table, I can see that smaller windows yield a much better result than larger ones. My assumption is that the granularity of the features plays a part in it. In a long window, the intricacies of the features get muddy, and useful features are harder to train and infer from a model. But a smaller window localizes those features, making it easier to single out the useful ones. 
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 2/part3.png"}
+\end{center}
+
+\end{document}

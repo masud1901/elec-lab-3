@@ -1,0 +1,123 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{url}
+\captionsetup{font=small, labelfont=bf}
+
+\title{Workshop 3: Facial Expression Recognition on FER2013 (AffectNet Baseline)}
+\author{Md Akmol Masud}
+\date{November 10, 2026}
+
+\begin{document}
+\maketitle
+
+% NOTE: every "TBD" below is a number from runs/RESULTS.md (produced by experiments.py on Colab).
+% Replace them, copy the PNGs from runs/ into "figs lab 3/", and delete this comment.
+
+% ---------------------------------------------------------------------------
+\section{Setup}
+All experiments use FER2013 with FER+ labels (8 classes, majority vote), a class-weighted loss (inverse square root of class size), AdamW with a one-cycle learning rate schedule, and the same augmentation. Because of the time limit, every arm was trained with the same reduced budget (8 epochs, 16 for the longer-schedule arm) on a Colab T4 GPU, so the comparison is fair but the absolute numbers are lower than a full run would give. Macro-F1 is the main score; accuracy is given for comparison with published papers. The code can be found here: \url{https://github.com/masud1901/elec-lab-3}
+
+During the work I found and fixed a bug: with \texttt{cudnn.benchmark} enabled together with fp16 autocast, training on my local GPU intermittently produced a NaN loss and a model that predicted only ``neutral'' (macro-F1 $\approx$ 0.06). I disabled the autotuner and added a guard that skips any step with a non-finite loss; a one-epoch check afterwards gave test accuracy 0.645 and macro-F1 0.41.
+
+% ---------------------------------------------------------------------------
+\section{Exercise 1: Baseline (ResNet-18, 128 px)}
+The baseline is an ImageNet-pretrained ResNet-18 fine-tuned on 48$\times$48 faces enlarged to 128$\times$128. Test accuracy: TBD, test macro-F1: TBD.
+
+% ---------------------------------------------------------------------------
+\section{Exercise 2: Adapting the network to small images}
+Instead of enlarging the faces, I kept them at 48$\times$48 and replaced the 7$\times$7 stride-2 stem convolution of ResNet-18 with a 3$\times$3 stride-1 convolution. With the standard stem a 48 px image shrinks to 6$\times$6 after the max-pool and the later stages reduce it to 2$\times$2, so most of the spatial detail is lost; with the small stem the max-pool gives 24$\times$24. This also needs about 7 times fewer pixels than 128 px, so training is faster.
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Model & Test acc. & Test macro-F1 \\
+\midrule
+Baseline, 128 px & TBD & TBD \\
+Small stem, 48 px & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Discussion: TBD (is the small-image network better or worse than upscaling, and what does the time/accuracy trade-off look like?).
+
+% ---------------------------------------------------------------------------
+\section{Exercise 3: Improving accuracy}
+The best published single-network results on FER2013 are around 73--76\% accuracy on the original labels (e.g.\ VGG-based networks and ensembles with extra tricks); results on the cleaner FER+ labels are higher, about 85--90\%. \textbf{TBD: verify and cite the exact papers I use.}
+
+My method combines three ideas, all added to the training loop:
+\begin{itemize}
+\item \textbf{Mixup (alpha 0.2) and CutMix (alpha 1.0):} half of the batches are blended or have a patch pasted from another image, with the labels mixed in the same proportion. The network cannot memorise single images, which reduces overfitting on a small dataset.
+\item \textbf{EMA of the weights (decay 0.999):} a slowly updated copy of the weights is used for validation and testing. It is smoother and usually generalises better than the final step.
+\item \textbf{Longer schedule with a tuned learning rate:} 16 epochs at peak learning rate $10^{-3}$ instead of 8 at $5\cdot10^{-4}$.
+\end{itemize}
+I also trained EfficientNet-B0 with the same recipe as a bonus arm.
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Model & Test acc. & Test macro-F1 \\
+\midrule
+Baseline (Exercise 1) & TBD & TBD \\
+Small stem (Exercise 2) & TBD & TBD \\
+Small stem + mixup/CutMix + EMA & TBD & TBD \\
+EfficientNet-B0 + mixup + EMA & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Discussion: TBD (was the improvement of 1--2 points reached? Which component probably helped most? Note the budget is much shorter than the 50--100 epochs suggested.)
+
+% ---------------------------------------------------------------------------
+\section{Exercise 4: Effect of pretraining}
+
+\subsection*{4a: No pretrained weights}
+ResNet-18 with random initialisation (48 px, small stem): accuracy TBD, macro-F1 TBD.
+
+\subsection*{4b: AlexNet}
+AlexNet (the network of the AffectNet paper) at 128 px: accuracy TBD, macro-F1 TBD.
+
+\subsection*{4c: AlexNet vs.\ ResNet-18 during training}
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 3/learning_curves_all.png"}
+\end{center}
+
+Discussion: TBD from the curves (train loss, val loss, val accuracy and val macro-F1). Points to check: does AlexNet train slower or overfit earlier, is its val loss higher, and does the batch-normalised, residual ResNet-18 converge faster and to a higher F1? AlexNet has about 57M parameters, mostly in its fully connected layers, which makes it easier to overfit.
+
+\subsection*{4d: A network pretrained on expressions}
+I used the Vision Transformer \texttt{trpakov/vit-face-expression} (ViT-base, fine-tuned on facial expressions). Its encoder already encodes faces and expressions, unlike ImageNet features, so only a new head is trained (encoder frozen), at 112 px with interpolated position embeddings to fit the time budget. \textbf{TBD: note that this checkpoint was trained on FER2013 images, so it may have seen our test faces; I mention this as a caveat.}
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Model & Test acc. & Test macro-F1 \\
+\midrule
+Baseline ResNet-18 (ImageNet) & TBD & TBD \\
+4a: ResNet-18, no pretraining & TBD & TBD \\
+4b: AlexNet (ImageNet) & TBD & TBD \\
+4d: ViT, expression-pretrained & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Discussion: TBD.
+
+% ---------------------------------------------------------------------------
+\section{Exercise 5: Predictions on my own photos}
+I used the best model with \texttt{predict.py} on photos of myself in different moods.
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 3/predictions.png"}
+\end{center}
+
+Discussion: TBD (which moods were recognised correctly, which were confused, e.g.\ neutral vs.\ sad, and why; compare with the confusion matrix).
+
+\begin{center}
+\includegraphics[width=0.9\linewidth]{"figs lab 3/confusion_matrices_all.png"}
+\end{center}
+
+\end{document}
